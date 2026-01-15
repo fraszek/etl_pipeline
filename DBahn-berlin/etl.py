@@ -2,10 +2,12 @@ import json
 from pickle import INT
 import psycopg2
 
+#Change file path as needed
 file_path = 'C:/Users/frane/Desktop/Minor/DIA/Assignment/DBahn-berlin/station_data.json'
 with open(file_path, 'r') as file:
     data = json.load(file)
 
+#Change password and info as needed
 connection = psycopg2.connect(
     dbname='DIA_Assignment',
     user='postgres',
