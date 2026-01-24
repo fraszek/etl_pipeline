@@ -103,8 +103,6 @@ for source in SOURCES:
 
         for ts_dir in tqdm(ts_dirs, desc=f"Ingesting {range_dir.name}"):
 
-            observation_date = parse_date(ts_dir.name)
-
             for xml_file in ts_dir.glob("*.xml"):
                 try:
                     tree = etree.parse(xml_file)
@@ -122,9 +120,9 @@ for source in SOURCES:
 
                         # parse timestamps safely
                         ar_pt_ts = parse_timestamp(safe_get(row.get("ar_pt")))
-                        ar_ct_ts = parse_timestamp(safe_get(row.get("ar_ct")) or safe_get(row.get("ar_pt")))
+                        ar_ct_ts = parse_timestamp(safe_get(row.get("ar_ct"))) or ar_pt_ts
                         dp_pt_ts = parse_timestamp(safe_get(row.get("dp_pt")))
-                        dp_ct_ts = parse_timestamp(safe_get(row.get("dp_ct")) or safe_get(row.get("dp_pt")))
+                        dp_ct_ts = parse_timestamp(safe_get(row.get("dp_ct"))) or dp_pt_ts
 
                         cur.execute("""
                             INSERT INTO dim_trains (
@@ -138,17 +136,16 @@ for source in SOURCES:
 
                         cur.execute("""
                             INSERT INTO staging_movements (
-                                stop_id, observation_date, trip_id, station_xml_name,
+                                stop_id, trip_id, station_xml_name,
                                 arrival_planned, arrival_actual, arrival_status,
                                 departure_planned, departure_actual, departure_status
                             )
-                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
                             ON CONFLICT (stop_id) DO UPDATE SET
-                                observation_date = EXCLUDED.observation_date,
                                 arrival_actual = EXCLUDED.arrival_actual,
                                 departure_actual = EXCLUDED.departure_actual;
                         """, (
-                            stop_id, observation_date, trip_id, station_xml_name,
+                            stop_id, trip_id, station_xml_name,
                             ar_pt_ts, ar_ct_ts, safe_get(row.get("ar_cs")),
                             dp_pt_ts, dp_ct_ts, safe_get(row.get("dp_cs"))
                         ))

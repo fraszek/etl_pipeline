@@ -20,6 +20,10 @@
     dp_pt="{dp/@pt}"
     dp_ct="{dp/@ct}"
     dp_cs="{dp/@cs}"
+
+    tl_c="{tl/@c}"
+    tl_n="{tl/@n}"
+    tl_o="{tl/@o}"
   />
 </xsl:template>
 

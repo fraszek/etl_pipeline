@@ -3,3 +3,4 @@ timetable_changes/
 .venv/
 station_data.json
 DBahn-berlin/
+schema.json
