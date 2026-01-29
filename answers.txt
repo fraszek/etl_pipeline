@@ -1,1 +1,0 @@
-a train cancellations are counted as 1 cancellation when the departure or arrival of a train at a station falls within the timestamp given and is cancelled. so if 1 train had two stops within the timestamp,  both cancelled, they are counted as two seperate cancellations
