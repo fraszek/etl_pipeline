@@ -11,17 +11,20 @@ import pandas as pd
 
 # Set environment variables for Java and PySpark
 os.environ['JAVA_HOME'] = r'C:/Users/frane/.jdks/ms-17.0.17'
+os.environ["HADOOP_HOME"] = r"C:/hadoop"
 os.environ["PYSPARK_PYTHON"] = sys.executable
 os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
 
 ROW_COMMIT_THRESHOLD = 100_000
 
+# Define data sources
 SOURCES = [
-    Path("C:/Users/frane/Desktop/Minor/DIA/Queries/timetables"),
-    Path("C:/Users/frane/Desktop/Minor/DIA/Queries/timetable_changes")
+    Path("C:/Users/frane/Desktop/Minor/DIA/Queries/timetables2"),
+    Path("C:/Users/frane/Desktop/Minor/DIA/Queries/timetable_changes2"),
 ]
 
-OUTPUT_MOVEMENTS = r"C:/Users/frane/Desktop/Minor/DIA/Assignment/DBahn-berlin/staging_movements2.parquet"
+#update path as needed for output parquet file
+OUTPUT_MOVEMENTS = r"C:/Users/frane/Desktop/Minor/DIA/Assignment/DBahn-berlin/staging_movements.parquet"
 XSLT_FILE = r"C:/Users/frane/Desktop/Minor/DIA/Assignment/DBahn-berlin/flatten_movements.xslt"
 
 #parse date/time helpers
@@ -142,7 +145,7 @@ for source in SOURCES:
         
         for ts_dir in tqdm(ts_dirs, desc=desc):
             #trip date, later needed for daily average
-            trip_date = ts_dir.name[:8]
+            trip_date = ts_dir.name[:6]
 
             for xml_file in ts_dir.glob("*.xml"):
                 try:
@@ -217,7 +220,3 @@ if os.path.exists(OUTPUT_MOVEMENTS):
     df_movements.select("station_xml_name").distinct().show(truncate=False)
 
 spark.stop()
-
-## change names output files and paths
-## verify spark works on other machines
-## load entire data again and run queries on that
