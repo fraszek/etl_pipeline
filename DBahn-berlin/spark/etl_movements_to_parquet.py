@@ -1,3 +1,22 @@
+"""
+Task 3.1: Spark ETL job, from timetable XML files to a Parquet dataset.
+
+Walks the extracted timetable and timetable-change folders, flattens each XML
+file with flatten_movements.xslt, parses the relevant fields and writes all
+train movements (one row per stop event) to a single Parquet file.
+
+Expected input layout (weekly archives extracted into folders):
+    <SOURCE>/<week_range>/<YYMMDDHHmm>/<station>_timetable.xml
+    <SOURCE>/<week_range>/<YYMMDDHHmm>/<station>_change.xml
+
+Output columns (see movements_schema below):
+    stop_id, trip_date, trip_id, station_xml_name,
+    arrival_planned,   arrival_actual,   arrival_status,
+    departure_planned, departure_actual, departure_status
+
+Before running, update JAVA_HOME / HADOOP_HOME, SOURCES, OUTPUT_MOVEMENTS and
+XSLT_FILE below to match your machine.
+"""
 import json
 from pathlib import Path
 from tqdm import tqdm
@@ -9,15 +28,21 @@ import os
 import sys
 import pandas as pd
 
+# ---------------------------------------------------------------------------
+# Configuration: adjust these paths to your local setup
+# ---------------------------------------------------------------------------
+
 # Set environment variables for Java and PySpark
+# (HADOOP_HOME is only needed on Windows, where it points to winutils.exe)
 os.environ['JAVA_HOME'] = r'C:/Users/frane/.jdks/ms-17.0.17'
 os.environ["HADOOP_HOME"] = r"C:/hadoop"
 os.environ["PYSPARK_PYTHON"] = sys.executable
 os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
 
+# Number of buffered rows after which the buffer is written to Parquet
 ROW_COMMIT_THRESHOLD = 100_000
 
-# Define data sources
+# Define data sources: folders holding the extracted timetables and timetable changes
 SOURCES = [
     Path("C:/Users/frane/Desktop/Minor/DIA/Queries/timetables2"),
     Path("C:/Users/frane/Desktop/Minor/DIA/Queries/timetable_changes2"),
@@ -26,6 +51,12 @@ SOURCES = [
 #update path as needed for output parquet file
 OUTPUT_MOVEMENTS = r"C:/Users/frane/Desktop/Minor/DIA/Assignment/DBahn-berlin/staging_movements.parquet"
 XSLT_FILE = r"C:/Users/frane/Desktop/Minor/DIA/Assignment/DBahn-berlin/flatten_movements.xslt"
+
+# ---------------------------------------------------------------------------
+# Parsing helpers
+# DB timestamps are strings in YYMMDDHHmm format, e.g. "2509051116" is
+# 2025-09-05 11:16. Invalid or missing values become None (NULL in Parquet).
+# ---------------------------------------------------------------------------
 
 #parse date/time helpers
 def parse_date(ts):
@@ -61,7 +92,7 @@ def parse_timestamp(ts):
         return None
     return datetime.combine(d, t)
 
-#safe get helper
+#safe get helper: strips whitespace and turns empty XSLT attributes into None
 def safe_get(value):
     if value is None:
         return None
@@ -74,7 +105,13 @@ spark = SparkSession.builder \
     .master("local[*]") \
     .getOrCreate()
 
-# Define schema for movements
+# Define schema for movements (one row per train stop event at a station)
+#   stop_id           : DB stop id of the <s> element (unique per trip and stop)
+#   trip_date         : YYMMDD taken from the snapshot folder name
+#   trip_id           : trip part of stop_id (text before the first "-")
+#   station_xml_name  : station name from the XML root element
+#   *_planned/_actual : planned and actual (changed) arrival/departure times
+#   *_status          : change status, "c" = cancelled
 movements_schema = StructType([
     StructField("stop_id", StringType(), True),
     StructField("trip_date", StringType(), True),
@@ -91,11 +128,14 @@ movements_schema = StructType([
 # Load XSLT once
 xslt = etree.XSLT(etree.parse(XSLT_FILE))
 
+# Buffer state: rows are collected in memory and written in batches
 first_write = True
 movements_buffer = []
 row_counter = 0
 
-# Function to flush movements buffer to Parquet
+# Function to flush movements buffer to Parquet.
+# The first call creates the file. Later calls read the existing file, append
+# the new rows and write it back.
 def flush_movements():
     global movements_buffer, first_write
     
@@ -128,6 +168,9 @@ def flush_movements():
         import traceback
         traceback.print_exc()
 
+# ---------------------------------------------------------------------------
+# Main loop: source folder -> week folder -> snapshot folder -> XML files
+# ---------------------------------------------------------------------------
 total_files_processed = 0
 total_movements = 0
 
@@ -162,6 +205,8 @@ for source in SOURCES:
                         if not stop_id:
                             continue
                         
+                        # Derive trip_id from stop_id. Some ids start with "-",
+                        # so the leading minus is kept as part of the trip id.
                         parts = stop_id.split("-")
                         if stop_id.startswith("-"):
                             trip_id = f"-{parts[1]}"
@@ -175,6 +220,7 @@ for source in SOURCES:
                         dp_pt_ts = parse_timestamp(safe_get(row.get("dp_pt")))
                         dp_ct_ts = parse_timestamp(safe_get(row.get("dp_ct"))) or dp_pt_ts
                         
+                        # Cancelled stops (status "c") have no actual time
                         ar_status = safe_get(row.get("ar_cs"))
                         if ar_status == "c":
                             ar_ct_ts = None
@@ -206,13 +252,16 @@ for source in SOURCES:
                             row_counter = 0
                 
                 except Exception as e:
+                    # Skip malformed or unreadable XML files
                     continue
 
     print(f"Completed ingestion from source: {source.name}")
 
+# Write any rows still left in the buffer
 if movements_buffer:
     flush_movements()
 
+# Sanity check: read the result back and show a sample
 if os.path.exists(OUTPUT_MOVEMENTS):
     df_movements = spark.read.parquet(OUTPUT_MOVEMENTS)
     #output example data

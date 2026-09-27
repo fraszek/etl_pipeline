@@ -1,3 +1,16 @@
+"""
+Task 3.3: Average number of train departures per station during peak hours.
+
+Peak hours are 07:00-09:00 and 17:00-19:00, i.e. planned departure hours
+7, 8, 17 and 18. For every station the script counts non-cancelled peak-hour
+departures per day and then averages these daily counts over all days:
+    station_xml_name | avg_daily_peak_departures | num_days
+
+Rows are first de-duplicated on (stop_id, trip_date). The ETL appends a new
+row for every timetable change, so the same stop can appear several times.
+
+Before running, update JAVA_HOME and OUTPUT_PARQUET below.
+"""
 import os
 import sys
 from pyspark.sql import SparkSession
@@ -8,7 +21,9 @@ os.environ['JAVA_HOME'] = r'C:/Users/frane/.jdks/ms-17.0.17'
 os.environ["PYSPARK_PYTHON"] = sys.executable
 os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
 
+# Path to the Parquet file written by the ETL job
 OUTPUT_PARQUET = r"C:/Users/frane/Desktop/Minor/DIA/Assignment/DBahn-berlin/staging_movements.parquet"
+# Not used by this query (it covers all stations); kept for consistency with query_avg_daily_delay.py
 STATION_NAME = "Berlin Zoologischer Garten"
 
 # Create Spark session
@@ -20,6 +35,7 @@ spark = SparkSession.builder \
 
 # Read the parquet file
 df = spark.read.parquet(OUTPUT_PARQUET)
+# Keep a single row per stop event (timetable changes create duplicates)
 df_deduped = df.dropDuplicates(["stop_id", "trip_date"])
 
 # Filter for departures that are not cancelled and have a planned departure time
@@ -35,6 +51,7 @@ departures_with_hour = df_deduped.filter(
 )
 
 # Filter for peak hours (7-8 for morning, 17-18 for evening)
+# hour() 7 and 8 together cover 07:00-08:59, and 17 and 18 cover 17:00-18:59
 peak_hour_departures = departures_with_hour.filter(
     (col("departure_hour").isin([7, 8, 17, 18]))
 )

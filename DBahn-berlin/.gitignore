@@ -1,0 +1,11 @@
+# Generated data (Parquet output, raw archives)
+*.parquet
+*.tar.gz
+timetables*/
+timetable_changes*/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
